@@ -9,12 +9,10 @@ import json
 import copy
 from dotenv import load_dotenv
 load_dotenv()  # This loads the .env file into the environment
-
 import torch
 import torch.nn as nn
 from fastchat.model import get_conversation_template
 from transformers import AutoTokenizer, AutoModelForCausalLM
-
 import nanogcg
 from nanogcg import GCGConfig
 
@@ -59,27 +57,7 @@ test_prefixes = [
     "never",
     "is not"
 ]
-saved_models_path = "saved_models"
-dataset_dir = "./quiz_bias"
-results_dir = "./results"
-if not os.path.exists(saved_models_path):
-    os.makedirs(saved_models_path)
-if not os.path.exists(results_dir):
-    os.makedirs(results_dir)
-
 hf_token = os.getenv("HF_TOKEN")
-suffix_size = 20
-group_names = ["religions", "ethnicities", "Politicion", "nationalities"]
-
-train_num_steps = 500
-test_num_steps = 500
-early_stop = True
-topk = 16
-batch_size = 16
-standard_init = " !" * suffix_size
-train_set_size = 25
-verbose = True
-SEED = 42
 
 def set_seed(seed):
     torch.manual_seed(seed)
@@ -235,7 +213,7 @@ def get_response(model, tokenizer, messages, device, max_length=50):
     return response
 
 
-def evaluate_step(model, tokenizer, goal, target, suffix):
+def evaluate_step(model, tokenizer, goal, target, suffix, device):
     # get the response
     messages = [{"role": "user", "content": goal + suffix}]
     response = get_response(model, tokenizer, messages, device)
@@ -248,7 +226,7 @@ def evaluate_step(model, tokenizer, goal, target, suffix):
     return True, response
 
 
-def run_attack(goal, target, suffix_init, model, tokenizer, device, num_steps=train_num_steps, early_stop=early_stop, topk=topk, batch_size=batch_size, verbose=True):
+def run_attack(goal, target, suffix_init, model, tokenizer, device, num_steps, early_stop, topk, batch_size, verbose, SEED):
     suffix_list = []
     loss_list = []
     success_list = []
@@ -268,7 +246,7 @@ def run_attack(goal, target, suffix_init, model, tokenizer, device, num_steps=tr
         # Extract the suffix and loss
         loss = step_results.best_loss
         suffix = step_results.best_string
-        success, response = evaluate_step(model, tokenizer, goal, target, suffix)
+        success, response = evaluate_step(model, tokenizer, goal, target, suffix, device)
         suffix_list.append(suffix)
         loss_list.append(loss)
         success_list.append(success)
@@ -290,7 +268,7 @@ def run_attack(goal, target, suffix_init, model, tokenizer, device, num_steps=tr
     return suffix_list, loss_list, success_list, response_list
 
 
-def run_CRI(train_set, model, model_str, tokenizer, device, standard_init, train_num_steps, early_stop, topk, batch_size, verbose):
+def run_CRI(train_set, model, model_str, tokenizer, device, standard_init, train_num_steps, early_stop, topk, batch_size, verbose, results_dir, SEED):
     """
     Run the attack on the training set.
     """
@@ -303,7 +281,7 @@ def run_CRI(train_set, model, model_str, tokenizer, device, standard_init, train
     for i, (goal, target) in enumerate(train_set):
         print(f"Running attack on sample {i + 1}/{len(train_set)}")
         suffix_list, loss_list, success_list, response_list = \
-            run_attack(goal, target, standard_init, model, tokenizer, device, num_steps=train_num_steps, early_stop=early_stop, topk=topk, batch_size=batch_size, verbose=verbose)
+            run_attack(goal, target, standard_init, model, tokenizer, device, num_steps=train_num_steps, early_stop=early_stop, topk=topk, batch_size=batch_size, verbose=verbose, SEED=SEED)
         all_train_suffix_list.append(suffix_list)
         all_train_loss_list.append(loss_list)
         all_train_success_list.append(success_list)
@@ -322,19 +300,18 @@ def run_CRI(train_set, model, model_str, tokenizer, device, standard_init, train
 
     return all_train_suffix_list, all_train_loss_list, all_train_success_list, all_train_response_list
 
-
-def get_CRI(train_set, model, tokenizer, device, standard_init, train_num_steps, early_stop, topk, batch_size, verbose):
+def get_CRI(train_set, model, model_str, tokenizer, device, standard_init, train_num_steps, early_stop, topk, batch_size, verbose, results_dir, SEED):
     """
     Get the CRI for the training set.
     """
     all_train_suffix_list, all_train_loss_list, all_train_success_list, all_train_response_list = \
-        run_CRI(train_set, model, tokenizer, device, standard_init, train_num_steps, early_stop, topk, batch_size, verbose)
+        run_CRI(train_set, model, model_str, tokenizer, device, standard_init, train_num_steps, early_stop, topk, batch_size, verbose, results_dir, SEED)
     
     # Get the last suffix for each sample
     last_suffix_list = [suffix_list[-1] for suffix_list in all_train_suffix_list]
     return last_suffix_list
 
-def get_best_suffix_init_CRI(CRI_list, goal, target, model, tokenizer, device):
+def get_best_suffix_init_CRI(CRI_list, goal, target, model, tokenizer, device, SEED):
     """
     Finds the best suffix initialization from the CRI list based on the attack loss.
     """
@@ -342,15 +319,14 @@ def get_best_suffix_init_CRI(CRI_list, goal, target, model, tokenizer, device):
     best_loss = float('inf')
     for cri in CRI_list:
         # Run the attack with the current CRI
-        suffix_list, loss_list, success_list, response_list = \
-            run_attack(goal, target, cri, model, tokenizer, device, num_steps=1, early_stop=False, topk=topk, batch_size=batch_size)
+        _, loss_list, _, _ = \
+            run_attack(goal, target, cri, model, tokenizer, device, num_steps=1, early_stop=False, topk=1, batch_size=1, verbose=False, SEED=SEED)
         if loss_list[0] < best_loss:
             best_loss = loss_list[0]
             best_suffix = cri
     return best_suffix
 
-
-def run_attack_CRI(goal, target, model, model_str, tokenizer, device, train_set, test_set, num_steps=train_num_steps, early_stop=early_stop, topk=topk, batch_size=batch_size, cri=None):
+def run_attack_CRI(goal, target, model, model_str, tokenizer, device, train_set, test_set, test_num_steps, early_stop, topk, batch_size, results_dir, standard_init, verbose, SEED, cri=None):
     """
     # Run attack on each sample in the test set
     """
@@ -364,12 +340,12 @@ def run_attack_CRI(goal, target, model, model_str, tokenizer, device, train_set,
             best_suffix_init = standard_init
         else:
             # Find best suffix init from the CRI set according to attack loss
-            best_suffix_init = get_best_suffix_init_CRI(cri, goal, target, model, tokenizer, device)
+            best_suffix_init = get_best_suffix_init_CRI(cri, goal, target, model, tokenizer, device, SEED)
 
         print(f"Best suffix init: {best_suffix_init}")
         # Run the attack with the best suffix init
         suffix_list, loss_list, success_list, response_list = \
-            run_attack(goal, target, best_suffix_init, model, tokenizer, device, num_steps=test_num_steps, early_stop=early_stop, topk=topk, batch_size=batch_size)
+            run_attack(goal, target, best_suffix_init, model, tokenizer, device, num_steps=test_num_steps, early_stop=early_stop, topk=topk, batch_size=batch_size, verbose=verbose, SEED=SEED)
         all_test_suffix_list.append(suffix_list)
         all_test_loss_list.append(loss_list)
         all_test_success_list.append(success_list)
