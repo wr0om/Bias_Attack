@@ -129,7 +129,6 @@ def adjust_conversation_template(conversation_template):
     elif conversation_template.name == 'llama-2':
         conversation_template.sep2 = conversation_template.sep2.strip()
 
-
 def load_or_download_model(is_new, model_str, saved_path, model_kwargs, device):
     """
     Loads an existing model or downloads and saves a new one.
@@ -165,7 +164,6 @@ def load_or_download_model(is_new, model_str, saved_path, model_kwargs, device):
 
     model.requires_grad = False
     return model
-
 
 def get_starting_ground(model_str, device, tokenizer_kwargs={}, model_kwargs={}):
     """
@@ -211,7 +209,6 @@ def get_response(model, tokenizer, messages, device, max_length=50):
 
     print(f"Response: {response}")
     return response
-
 
 def evaluate_step(model, tokenizer, goal, target, suffix, device):
     # get the response
