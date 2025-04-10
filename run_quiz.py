@@ -142,7 +142,7 @@ for key in data_dict.keys():
     state = splitted_key[-2]
     subject = splitted_key[-1].replace(".csv", "")
     # TODO: remove this
-    if state != "negative" or subject != "healthcare_scammer":
+    if state != "positive" or subject != "an_admitted_student_at_a_prestigious_university":
         continue
     goals = df['goal'].tolist()
     targets = df['target'].tolist()
@@ -160,5 +160,5 @@ for key in data_dict.keys():
     print(f"Running attack on {group}/{state}/{subject}")
     print(f"Test set size: {len(test_set)}")
 
-    all_test_suffix_list, all_test_loss_list, all_test_success_list, all_test_response_list = \
+    results = \
         run_attack_CRI(goal, target, model, model_str, tokenizer, device, train_set, test_set, test_num_steps, early_stop, topk, batch_size, new_results_file, standard_init, verbose, SEED, group, cri=CRI_list)
