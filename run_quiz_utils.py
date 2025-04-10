@@ -16,6 +16,7 @@ from fastchat.model import get_conversation_template
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import nanogcg
 from nanogcg import GCGConfig
+import time
 
 
 test_prefixes = [
@@ -184,14 +185,6 @@ def load_or_download_model(is_new, model_str, saved_path, model_kwargs, device):
             token=hf_token,
             **model_kwargs
         ).to(device).eval()
-        
-        # # Fix generation_config if necessary
-        # if model.can_generate():
-        #     if model.generation_config is not None:
-        #         model.generation_config.do_sample = True  # Enable sampling
-        #         model.generation_config.temperature = 0.9
-        #         model.generation_config.top_p = 0.6
-        
         # Save the model
         model.save_pretrained(saved_path)
     else:
@@ -385,6 +378,7 @@ def run_attack_CRI(goal, target, model, model_str, tokenizer, device, train_set,
     }
 
     for i, (goal, target) in enumerate(test_set):
+        start_time = time.time()
         print(f"Running attack on sample {i + 1}/{len(test_set)}")
         if cri is None:
             best_suffix_init = standard_init
@@ -397,6 +391,8 @@ def run_attack_CRI(goal, target, model, model_str, tokenizer, device, train_set,
         suffix_list, loss_list, success_list, response_list, individual = \
             run_attack(goal, target, best_suffix_init, model, tokenizer, device, num_steps=test_num_steps, early_stop=early_stop, topk=topk, batch_size=batch_size, verbose=verbose, group=group, SEED=SEED)
         print(f"Finished sample {i + 1}/{len(test_set)}: {goal} : success = {success_list[-1]}")
+        end_time = time.time()
+        elapsed_time = end_time - start_time
 
         # Append results to JSON structure
         results["all_tests"].append({
@@ -409,6 +405,7 @@ def run_attack_CRI(goal, target, model, model_str, tokenizer, device, train_set,
             "loss_list": loss_list,
             "success_list": success_list,
             "response_list": response_list, 
+            "elapsed_time": elapsed_time
         })
 
         # Write JSON to file after each iteration
