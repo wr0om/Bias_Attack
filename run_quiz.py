@@ -65,7 +65,7 @@ for group in group_names:
                 data_dict[file_path] = df
 
 # Get train set (CHANGE LATER)
-train_group = "Generic"
+train_group = "generics"
 train_dict = {}
 for key in data_dict.keys():
     df = data_dict[key]
@@ -101,7 +101,7 @@ for key in data_dict.keys():
     state = splitted_key[-2]
     subject = splitted_key[-1].replace(".csv", "")
     # TODO: remove this
-    if group != "RaceEthnicity" or state != "positive" or subject != "an_admitted_student_at_a_prestigious_university":
+    if group != "races" or state != "positive" or subject != "an_admitted_student_at_a_prestigious_university":
         continue
 
     goals = df['goal'].tolist()
